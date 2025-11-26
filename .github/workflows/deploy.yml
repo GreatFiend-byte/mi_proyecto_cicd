@@ -16,7 +16,14 @@ jobs:
     - name: Set up SSH
       uses: webfactory/ssh-agent@v0.9.0
       with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Usa la clave Ed25519 que pusiste como secreto
+        ssh-private-key: ${{-----BEGIN OPENSSH PRIVATE KEY-----
+                              b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABBgsycxZ6
+                              FAoFLwtlVY/CA3AAAAGAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIGhoRWPP8zz/zAto
+                              GF4gsPkcdYJalpoYmtLCIwPq6iQaAAAAoKd7ujEfPKJCHdvNBbRViI/NGnRvbcRfe1Ac4n
+                              CXWff+AGOhzHYDGaMMrop4bqPLJlDJptZU5ELDpphVB85KRpsN5f2YHX1tVp666g854Ysd
+                              8T4wmUZL1b7nMf3hfqqnNXH1FSK8WYrAoD2k4p4MlE4WRKwsJw4EiNhfutiicpzfhDODPI
+                              XOICE71nibeKp5GiuDuya/8+wsjrbixqneNjg=
+                              -----END OPENSSH PRIVATE KEY-----}}
 
     - name: Deploy to DigitalOcean VPS via SSH
       env:
