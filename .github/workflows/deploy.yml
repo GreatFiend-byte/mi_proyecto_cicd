@@ -1,47 +1,31 @@
-name: Deploy to VPS
+# .github/workflows/deploy.yml
+name: CI/CD Blue-Green Deployment
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
     steps:
-    - name: 🚚 Obtener código
-      uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: 🐳 Construir imagen Docker
-      run: |
-        docker build -t mi-app-cicd:latest -f docker/Dockerfile .
-
-    - name: 🏷️ Etiquetar imagen
-      run: |
-        docker tag mi-app-cicd:latest ${{ secrets.DOCKERHUB_USERNAME }}/mi-app-cicd:latest
-
-    - name: 🔐 Login a Docker Hub
-      uses: docker/login-action@v2
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.9.0
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} # Usa la clave Ed25519 que pusiste como secreto
 
-    - name: 📤 Push a Docker Hub
+    - name: Deploy to DigitalOcean VPS via SSH
+      env:
+        HOST_USER: root
+        HOST_IP: ${{ secrets.HOST_IP }}
       run: |
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/mi-app-cicd:latest
-
-    - name: 🚀 Desplegar en VPS
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USERNAME }}
-        key: ${{ secrets.VPS_SSH_KEY }}
-        script: |
-          # Pull y deploy en el servidor
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mi-app-cicd:latest
-          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/mi-app-cicd:latest mi-app-cicd:latest
-          chmod +x scripts/deploy.sh
-          ./scripts/deploy.sh
+        # 1. Copia los archivos del proyecto al VPS
+        # La IP pública es 142.93.82.96.
+        rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ ${HOST_USER}@${HOST_IP}:/root/mi-proyecto-cicd/
+        
+        # 2. Ejecuta el script de despliegue en el VPS
+        ssh ${HOST_USER}@${HOST_IP} "cd /root/mi-proyecto-cicd/ && chmod +x scripts/deploy.sh && sudo scripts/deploy.sh"
