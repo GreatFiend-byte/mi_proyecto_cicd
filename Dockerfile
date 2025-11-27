@@ -1,9 +1,20 @@
-FROM nginx:alpine
+# Imagen base de Node
+FROM node:18-alpine
 
-# Copia tu index.html al directorio que Nginx sirve
-COPY index.html /usr/share/nginx/html/index.html
+# Carpeta de trabajo dentro del contenedor
+WORKDIR /app
 
-# Expone el puerto 80 (Nginx lo usa por defecto)
-EXPOSE 80
+# Copiamos package.json y package-lock.json (si existe)
+COPY package*.json ./
 
-# Nginx ya viene configurado, no necesitas CMD custom
+# Instalamos solo dependencias de producción
+RUN npm install --production
+
+# Copiamos el resto del proyecto (index.html, server.js, etc.)
+COPY . .
+
+# Exponemos el puerto donde corre Express
+EXPOSE 3000
+
+# Comando para arrancar la app
+CMD ["npm", "start"]
