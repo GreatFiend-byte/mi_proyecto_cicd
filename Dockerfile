@@ -1,11 +1,9 @@
-# docker/Dockerfile
 FROM nginx:alpine
-# Copia el archivo de configuración de Nginx del contenedor
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copia los archivos de la app al directorio de Nginx
-COPY app/ /usr/share/nginx/html
+# Copia tu index.html al directorio que Nginx sirve
+COPY index.html /usr/share/nginx/html/index.html
 
+# Expone el puerto 80 (Nginx lo usa por defecto)
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+# Nginx ya viene configurado, no necesitas CMD custom
