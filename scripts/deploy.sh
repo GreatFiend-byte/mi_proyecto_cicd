@@ -1,82 +1,117 @@
-#!/bin/bash
+set -e
 
-# --- CONFIGURACIÓN ---
-BLUE_CONTAINER="app-blue"
-GREEN_CONTAINER="app-green"
-BLUE_PORT="8080"
-GREEN_PORT="8081"
-IMAGE_NAME="mi-proyecto-cicd:latest"
-NGINX_CONF="/etc/nginx/conf.d/app_router.conf"
-ACTIVE_ENV_FILE="/var/www/active_env.txt"
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-# --- LÓGICA DE CAMBIO DE ENTORNO ---
-# Determina qué ambiente está activo y cuál será el objetivo del despliegue
-if [ -f $ACTIVE_ENV_FILE ] && [ "$(cat $ACTIVE_ENV_FILE)" == "green" ]; then
-    TARGET_ENV="blue"
-else
-    TARGET_ENV="green"
-fi
+APP_NAME="app"
+DOCKER_IMAGE=${DOCKER_IMAGE:-"tu-usuario/blue-green-api:latest"}
+BLUE_PORT=3001
+GREEN_PORT=3002
+CONTAINER_PORT=3000
 
-if [ "$TARGET_ENV" == "blue" ]; then
-    TARGET_CONTAINER=$BLUE_CONTAINER
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}  Despliegue Blue-Green${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
+
+ACTIVE_COLOR=$(docker ps --filter "name=${APP_NAME}-" --format "{{.Names}}" | grep -o 'blue\|green' | head -n1)
+
+if [ -z "$ACTIVE_COLOR" ]; then
+    echo -e "${YELLOW}No hay entorno activo. Iniciando en BLUE${NC}"
+    TARGET_COLOR="blue"
     TARGET_PORT=$BLUE_PORT
-    OTHER_CONTAINER=$GREEN_CONTAINER
 else
-    TARGET_CONTAINER=$GREEN_CONTAINER
-    TARGET_PORT=$GREEN_PORT
-    OTHER_CONTAINER=$BLUE_CONTAINER
+    echo -e "${GREEN}Entorno activo actual: ${ACTIVE_COLOR}${NC}"
+    if [ "$ACTIVE_COLOR" = "blue" ]; then
+        TARGET_COLOR="green"
+        TARGET_PORT=$GREEN_PORT
+    else
+        TARGET_COLOR="blue"
+        TARGET_PORT=$BLUE_PORT
+    fi
 fi
 
-echo "--- Iniciando Despliegue Blue-Green ---" 
-echo "Ambiente Objetivo (Deploy): $TARGET_ENV, Puerto: $TARGET_PORT"
-echo "Ambiente Activo (Old): $OTHER_CONTAINER"
+echo -e "${GREEN}Desplegando en: ${TARGET_COLOR}${NC}"
+echo -e "${GREEN}Puerto: ${TARGET_PORT}${NC}"
+echo ""
 
-# 1. Construir la nueva imagen Docker
-echo "1. Construyendo imagen $IMAGE_NAME..."
-docker build -t $IMAGE_NAME -f docker/Dockerfile .
+echo -e "${YELLOW}Haciendo 'docker pull' de la nueva imagen...${NC}"
+docker pull $DOCKER_IMAGE
 
-# 2. Detener y eliminar el contenedor objetivo si existe
-echo "2. Deteniendo y eliminando contenedor viejo: $TARGET_CONTAINER"
-docker stop $TARGET_CONTAINER 2>/dev/null
-docker rm $TARGET_CONTAINER 2>/dev/null
+echo -e "${YELLOW}Limpiando contenedor inactivo anterior 'app-${TARGET_COLOR}'...${NC}"
+docker stop "app-${TARGET_COLOR}" 2>/dev/null || true
+docker rm "app-${TARGET_COLOR}" 2>/dev/null || true
 
-# 3. Lanzar un nuevo contenedor con la nueva imagen
-echo "3. Iniciando nuevo contenedor $TARGET_CONTAINER en el puerto $TARGET_PORT..."
-docker run -d --name $TARGET_CONTAINER -p $TARGET_PORT:80 $IMAGE_NAME
+echo -e "${YELLOW}Iniciando nuevo contenedor 'app-${TARGET_COLOR}' en puerto ${TARGET_PORT}...${NC}"
+docker run -d \
+    --name "app-${TARGET_COLOR}" \
+    -p ${TARGET_PORT}:${CONTAINER_PORT} \
+    -e PORT=${CONTAINER_PORT} \
+    -e APP_COLOR=${TARGET_COLOR} \
+    --restart always \
+    $DOCKER_IMAGE
 
-# 4. Prueba de salud (Health Check)
-echo "4. Esperando 10 segundos para Health Check..."
+echo -e "${YELLOW}Esperando 10s para que el contenedor inicie...${NC}"
 sleep 10
-HEALTH_CHECK_URL="http://localhost:$TARGET_PORT"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
 
-if [ "$HTTP_CODE" == "200" ]; then
-    echo "SUCCESS: Health check OK. HTTP $HTTP_CODE."
+echo -e "${YELLOW}Ejecutando Smoke Test en http://127.0.0.1:${TARGET_PORT}...${NC}"
+if ! curl --fail --silent --show-error http://127.0.0.1:${TARGET_PORT}/health > /dev/null; then
+    echo -e "${RED}****************${NC}"
+    echo -e "${RED}¡ERROR! El Smoke Test falló para 'app-${TARGET_COLOR}'.${NC}"
+    echo -e "${RED}Despliegue cancelado.${NC}"
+    echo -e "${RED}****************${NC}"
     
-    # 5. ACTUALIZAR NGINX PRINCIPAL (el "CUT OVER")
-    echo "5. Redirigiendo tráfico a $TARGET_ENV (Puerto $TARGET_PORT)..."
-    
-    # Escribe la nueva configuración de Nginx (apuntando al puerto del nuevo entorno)
-    echo "server {
-        listen 80;
-        server_name _;
-        location / {
-            proxy_pass http://localhost:$TARGET_PORT;
-        }
-    }" | sudo tee $NGINX_CONF
-    
-    # 6. Recargar Nginx para aplicar el cambio instantáneo
-    sudo nginx -s reload
-    
-    # 7. Actualizar el archivo de estado para el próximo despliegue
-    echo "$TARGET_ENV" | sudo tee $ACTIVE_ENV_FILE
-
-    echo "--- ¡Despliegue Blue-Green COMPLETO! Tráfico en $TARGET_ENV ---"
-
-else
-    echo "ERROR: Health check FALLIDO (HTTP $HTTP_CODE). Despliegue cancelado."
-    # Si falla, eliminamos el contenedor roto y mantenemos el tráfico en el entorno antiguo.
-    docker stop $TARGET_CONTAINER 2>/dev/null
-    docker rm $TARGET_CONTAINER 2>/dev/null
+    docker stop "app-${TARGET_COLOR}" || true
+    docker rm "app-${TARGET_COLOR}" || true
     exit 1
 fi
+
+echo -e "${GREEN}✓ Smoke Test exitoso.${NC}"
+echo ""
+
+echo -e "${YELLOW}Actualizando Nginx para apuntar a ${TARGET_COLOR} (puerto ${TARGET_PORT})...${NC}"
+
+sudo tee /etc/nginx/sites-available/blue-green > /dev/null <<EOF
+upstream backend {
+    server 127.0.0.1:${TARGET_PORT};
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /health {
+        proxy_pass http://backend/health;
+        access_log off;
+    }
+}
+EOF
+
+sudo nginx -t && sudo systemctl reload nginx
+echo -e "${GREEN}✓ Nginx actualizado${NC}"
+echo ""
+
+if [ ! -z "$ACTIVE_COLOR" ]; then
+    echo -e "${YELLOW}Deteniendo contenedor antiguo 'app-${ACTIVE_COLOR}'...${NC}"
+    docker stop "app-${ACTIVE_COLOR}" || true
+    echo -e "${GREEN}✓ Contenedor ${ACTIVE_COLOR} detenido${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}  ✓ Despliegue completado exitosamente${NC}"
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}Entorno activo: ${TARGET_COLOR}${NC}"
+echo -e "${GREEN}Puerto: ${TARGET_PORT}${NC}"
+echo ""
