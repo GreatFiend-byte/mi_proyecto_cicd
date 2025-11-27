@@ -27,7 +27,7 @@ else
     OTHER_CONTAINER=$BLUE_CONTAINER
 fi
 
-echo "--- Iniciando Despliegue Blue-Green ---"
+echo "--- Iniciando Despliegue Blue-Green ---" 
 echo "Ambiente Objetivo (Deploy): $TARGET_ENV, Puerto: $TARGET_PORT"
 echo "Ambiente Activo (Old): $OTHER_CONTAINER"
 
