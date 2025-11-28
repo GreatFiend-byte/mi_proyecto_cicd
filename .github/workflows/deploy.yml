@@ -16,15 +16,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Set lowercase repository name
-        run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
-      - name: Log in to GitHub Container Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -32,41 +28,36 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ env.REPO_LOWER }}:latest
-            ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
+            greatfiend/bluegreen:latest
+            greatfiend/bluegreen:${{ github.sha }}
           
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     
     steps:
-      - name: Set lowercase repository name for deploy
-        run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-        
       - name: Deploy Blue/Green to VPS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}  # ⚠️ Remover si no es necesaria
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: 22
           timeout: 120s
           script: |
-            set -e  # Exit on error
+            set -e
             echo "🚀 Iniciando despliegue Blue/Green..."
             
-            # Navegar al directorio correcto (elige una opción):
-            cd ~/server/practica-Estrategia-BlueGreen/scripts || 
-            cd ~/mi-proyecto/mi_proyecto_cicd/scripts ||
-            cd ~/scripts || {
+            # Navegar al directorio correcto
+            cd ~/mi-protyecto/mi_proyecto_cicd/scripts || {
               echo "❌ ERROR: No se pudo encontrar el directorio del script"
               ls -la ~/
               exit 1
             }
             
-            # ✅ Usar REPO_LOWER para minúsculas
-            export DOCKER_IMAGE="ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}"
+            # ✅ Imagen exacta que funciona en tu deploy manual
+            export DOCKER_IMAGE="greatfiend/bluegreen:${{ github.sha }}"
             echo "📦 Imagen Docker: $DOCKER_IMAGE"
             
             # Verificar que el script existe
