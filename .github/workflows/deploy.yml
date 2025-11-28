@@ -47,7 +47,8 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          timeout: 60s
+          port: 22
+          timeout: 120s
           script: |
             cd ~/server/practica-Estrategia-BlueGreen
             export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
