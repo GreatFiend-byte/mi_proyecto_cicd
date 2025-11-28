@@ -1,32 +1,72 @@
-# .github/workflows/deploy.yml
-name: CI/CD Blue-Green Deployment
+name: CI/CD Blue-Green con Docker y SSH
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  deploy:
+  # 1. Construir y subir la imagen Docker a GitHub Container Registry (GHCR)
+  build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Permite subir a GHCR
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up SSH
-      uses: webfactory/ssh-agent@v0.9.0
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # Calcula el nombre del repositorio en minúsculas para el tag de Docker.
+    # Lo guarda en GITHUB_ENV para que esté disponible para el siguiente paso.
+    - name: Set lowercase repository name
+      run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
       with:
-        ssh-private-key: ${{ secrets.SSH_KEY_PRIVATE }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }} # Token automático de GitHub
 
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        # Define dos tags: latest y el SHA del commit para inmutabilidad
+        tags: |
+          ghcr.io/${{ env.REPO_LOWER }}:latest
+          ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
 
-    - name: Deploy to DigitalOcean VPS via SSH
-      env:
-        HOST_USER: root
-        HOST_IP: ${{ secrets.HOST }}
-      run: |
-        # 1. Copia los archivos del proyecto al VPS
-        # La IP pública es 142.93.82.96.
-        rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ ${HOST_USER}@${HOST}:/root/mi-proyecto-cicd/
-        
-        # 2. Ejecuta el script de despliegue en el VPS
-        ssh ${HOST_USER}@${HOST} "cd /root/mi-proyecto-cicd/ && chmod +x scripts/deploy.sh && sudo scripts/deploy.sh"
+  # 2. Despliegue Blue/Green en el VPS
+  deploy:
+    needs: build-and-push # Depende de que la imagen se haya construido y subido
+    runs-on: ubuntu-latest
+    
+    # Repetimos el cálculo del nombre en minúsculas para este job
+    - name: Set lowercase repository name
+      run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+    # Usa SSH para copiar archivos y ejecutar el script de despliegue
+    - name: Deploy Blue/Green to VPS
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        # Pasamos la ruta completa de la imagen como una variable de entorno al script remoto
+        env:
+          DOCKER_IMAGE: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
+          # Define la ruta base en el VPS donde se copiarán los archivos (ej. /root/mi-proyecto)
+          REMOTE_PATH: /root/mi-proyecto-cicd
+        script: |
+          echo "Ejecutando despliegue Blue/Green para la imagen: $DOCKER_IMAGE"
+          
+          # Copia los archivos del repositorio al VPS (incluyendo scripts/deploy.sh)
+          # Esto garantiza que el script de despliegue remoto siempre sea la última versión
+          rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ ${REMOTE_PATH}/
+          
+          # Ejecuta el script de despliegue en el VPS (asegúrate de que tenga permisos de ejecución)
+          cd ${REMOTE_PATH} && chmod +x scripts/deploy.sh && sudo ./scripts/deploy.sh
