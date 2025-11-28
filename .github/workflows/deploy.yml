@@ -1,73 +1,51 @@
-name: CI/CD Blue-Green con Docker y SSH
+name: Blue-Green Deployment Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  # 1. Construir y subir la imagen Docker a GitHub Container Registry (GHCR)
   build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write # Permite subir a GHCR
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    # Calcula el nombre del repositorio en minúsculas para el tag de Docker.
-    # Lo guarda en GITHUB_ENV para que esté disponible para el siguiente paso.
-    - name: Set lowercase repository name
-      run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }} # Token automático de GitHub
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        # Define dos tags: latest y el SHA del commit para inmutabilidad
-        tags: |
-          ghcr.io/${{ env.REPO_LOWER }}:latest
-          ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
-
-  # 2. Despliegue Blue/Green en el VPS
-  deploy:
-    needs: build-and-push # Depende de que la imagen se haya construido y subido
     runs-on: ubuntu-latest
     
     steps:
-      # Repetimos el cálculo del nombre en minúsculas para este job
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Set lowercase repository name
         run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-      # Usa SSH para copiar archivos y ejecutar el script de despliegue
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}:latest
+            ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
       - name: Deploy Blue/Green to VPS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
-          # Pasamos la ruta completa de la imagen como una variable de entorno al script remoto
-          envs: DOCKER_IMAGE,REMOTE_PATH
-        env:
-          DOCKER_IMAGE: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
-          REMOTE_PATH: /root/mi-proyecto-cicd
-        script: |
-          echo "Ejecutando despliegue Blue/Green para la imagen: $DOCKER_IMAGE"
-          
-          # Copia los archivos del repositorio al VPS (incluyendo scripts/deploy.sh)
-          # Esto garantiza que el script de despliegue remoto siempre sea la última versión
-          rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ ${REMOTE_PATH}/
-          
-          # Ejecuta el script de despliegue en el VPS (asegúrate de que tenga permisos de ejecución)
-          cd ${REMOTE_PATH} && chmod +x scripts/deploy.sh && sudo ./scripts/deploy.sh
+          script: |
+            cd ~/server/practica-Estrategia-BlueGreen
+            export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
+            ./deploy_app.sh
