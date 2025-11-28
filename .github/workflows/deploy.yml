@@ -45,7 +45,7 @@ jobs:
     needs: build-and-push # Depende de que la imagen se haya construido y subido
     runs-on: ubuntu-latest
     
-    steps: # <--- ESTA LÍNEA FALTABA
+    steps:
       # Repetimos el cálculo del nombre en minúsculas para este job
       - name: Set lowercase repository name
         run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
@@ -58,16 +58,16 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
           # Pasamos la ruta completa de la imagen como una variable de entorno al script remoto
-          env:
-            DOCKER_IMAGE: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
-            # Define la ruta base en el VPS donde se copiarán los archivos (ej. /root/mi-proyecto)
-            REMOTE_PATH: /root/mi-proyecto-cicd
-          script: |
-            echo "Ejecutando despliegue Blue/Green para la imagen: $DOCKER_IMAGE"
-            
-            # Copia los archivos del repositorio al VPS (incluyendo scripts/deploy.sh)
-            # Esto garantiza que el script de despliegue remoto siempre sea la última versión
-            rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ ${REMOTE_PATH}/
-            
-            # Ejecuta el script de despliegue en el VPS (asegúrate de que tenga permisos de ejecución)
-            cd ${REMOTE_PATH} && chmod +x scripts/deploy.sh && sudo ./scripts/deploy.sh
+          envs: DOCKER_IMAGE,REMOTE_PATH
+        env:
+          DOCKER_IMAGE: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
+          REMOTE_PATH: /root/mi-proyecto-cicd
+        script: |
+          echo "Ejecutando despliegue Blue/Green para la imagen: $DOCKER_IMAGE"
+          
+          # Copia los archivos del repositorio al VPS (incluyendo scripts/deploy.sh)
+          # Esto garantiza que el script de despliegue remoto siempre sea la última versión
+          rsync -avz --exclude '.git' -e "ssh -o StrictHostKeyChecking=no" ./ ${REMOTE_PATH}/
+          
+          # Ejecuta el script de despliegue en el VPS (asegúrate de que tenga permisos de ejecución)
+          cd ${REMOTE_PATH} && chmod +x scripts/deploy.sh && sudo ./scripts/deploy.sh
