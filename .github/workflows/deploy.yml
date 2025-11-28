@@ -40,16 +40,43 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Set lowercase repository name for deploy
+        run: echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+        
       - name: Deploy Blue/Green to VPS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}  # ⚠️ Remover si no es necesaria
           port: 22
           timeout: 120s
           script: |
-            cd ~/mi-protyecto/mi_proyecto_cicd/scripts
-            export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
+            set -e  # Exit on error
+            echo "🚀 Iniciando despliegue Blue/Green..."
+            
+            # Navegar al directorio correcto (elige una opción):
+            cd ~/server/practica-Estrategia-BlueGreen/scripts || 
+            cd ~/mi-proyecto/mi_proyecto_cicd/scripts ||
+            cd ~/scripts || {
+              echo "❌ ERROR: No se pudo encontrar el directorio del script"
+              ls -la ~/
+              exit 1
+            }
+            
+            # ✅ Usar REPO_LOWER para minúsculas
+            export DOCKER_IMAGE="ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}"
+            echo "📦 Imagen Docker: $DOCKER_IMAGE"
+            
+            # Verificar que el script existe
+            if [ ! -f "deploy.sh" ]; then
+              echo "❌ ERROR: deploy.sh no encontrado"
+              ls -la
+              exit 1
+            fi
+            
+            # Ejecutar despliegue
+            chmod +x deploy.sh
             ./deploy.sh
+            echo "✅ Despliegue completado exitosamente!"
