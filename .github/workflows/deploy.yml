@@ -54,9 +54,9 @@ jobs:
       - name: Deploy Blue/Green to VPS
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.SSH_HOST }}
+          host: ${{ secrets.HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_KEY_PRIVATE }}
           # Pasamos la ruta completa de la imagen como una variable de entorno al script remoto
           env:
             DOCKER_IMAGE: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
