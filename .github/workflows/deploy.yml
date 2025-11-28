@@ -1,5 +1,3 @@
-name: Blue-Green Deployment Pipeline
-
 on:
   push:
     branches:
@@ -25,7 +23,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.TOKEN }}
-          
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -35,6 +32,7 @@ jobs:
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}:latest
             ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
+          
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -46,6 +44,15 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}  # Aquí va el secreto
+          port: 22
+          timeout: 60s
+          script: |
+            cd ~/server/practica-Estrategia-BlueGreen
+            export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
+            ./deploy_app.sh }}  
+          port: 22
+          timeout: 60s
           script: |
             cd ~/server/practica-Estrategia-BlueGreen
             export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
