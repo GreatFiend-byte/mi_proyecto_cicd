@@ -47,7 +47,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          port: 22
+          port: 80
           timeout: 60s
           script: |
             cd ~/server/practica-Estrategia-BlueGreen
