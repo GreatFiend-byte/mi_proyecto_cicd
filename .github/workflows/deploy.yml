@@ -52,4 +52,4 @@ jobs:
           script: |
             cd ~/mi-protyecto/mi_proyecto_cicd/scripts
             export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
-            ./deploy_app.sh
+            ./deploy.sh
