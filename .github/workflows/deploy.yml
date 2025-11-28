@@ -46,7 +46,7 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY_PRIVATE }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          ##passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: 80
           timeout: 60s
           script: |
