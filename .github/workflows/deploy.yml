@@ -50,6 +50,6 @@ jobs:
           port: 22
           timeout: 120s
           script: |
-            cd ~/server/practica-Estrategia-BlueGreen
+            cd ~/mi-protyecto/mi_proyecto_cicd/scripts
             export DOCKER_IMAGE="ghcr.io/${{ github.repository }}:${{ github.sha }}"
             ./deploy_app.sh
